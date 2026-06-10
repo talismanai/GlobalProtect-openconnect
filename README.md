@@ -376,6 +376,31 @@ sha256sum -c SHA256SUMS.txt
 - `globalprotect-openconnect-<version>.tar.gz` is the normal source archive.
 - `globalprotect-openconnect-<version>.offline.tar.gz` includes vendored Cargo dependencies and is intended for offline or distro package builds.
 
+#### Maintainer Versioning
+
+Fork release tags should include the upstream base version and a fork revision:
+
+```text
+v<upstream-version>-fork.<revision>
+```
+
+For example:
+
+```text
+v2.5.4-fork.1
+v2.5.4-fork.2
+v2.5.5-fork.1
+```
+
+Before creating a release tag, update `[workspace.package].version` in `Cargo.toml` to the same version without the leading `v`:
+
+```toml
+[workspace.package]
+version = "2.5.4-fork.1"
+```
+
+This keeps generated archive names, binary `--version` output, and the Git tag aligned.
+
 ## Building from Source
 
 You can build the application from source using either a DevContainer (recommended) or a local development environment.
