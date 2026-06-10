@@ -25,6 +25,7 @@ A modern GlobalProtect VPN client for Linux, built on OpenConnect with full supp
   - [NixOS](#nixos)
   - [Official Docker Image](#official-docker-image)
   - [Other Distributions](#other-distributions)
+  - [Release Assets](#release-assets)
 - [Building from Source](#building-from-source)
 - [Frequently Asked Questions](#frequently-asked-questions)
 - [License](#license)
@@ -330,6 +331,75 @@ The image includes `gpclient` and `gpauth` only. It does not include embedded we
    ```bash
    sudo make install
    ```
+
+### Release Assets
+
+Release assets are published at:
+
+<https://github.com/talismanai/GlobalProtect-openconnect/releases>
+
+Each `v*.*.*` release includes source archives, portable CLI archives, installable binary packages, and checksum files.
+
+#### Installable Binary Package
+
+Use this when you want `gpclient`, `gpauth`, and `gpservice` installed under `/usr/bin` with the packaged support files:
+
+```bash
+tar -xJf globalprotect-openconnect_<version>_<arch>.tar.xz
+cd globalprotect-openconnect_<version>
+sudo make install
+```
+
+Use `x86_64` for most Intel/AMD Linux machines and `aarch64` for ARM64 Linux machines.
+
+#### Portable CLI Archive
+
+Use this when you only want to unpack and run the CLI binaries without installing system files:
+
+```bash
+tar -xJf globalprotect-openconnect_<version>_<arch>.bin.tar.xz
+cd globalprotect-openconnect_<version>_<arch>
+./gpclient --help
+./gpauth --help
+```
+
+#### Verify Downloads
+
+Download `SHA256SUMS.txt` from the release and verify the files:
+
+```bash
+sha256sum -c SHA256SUMS.txt
+```
+
+#### Source Archives
+
+- `globalprotect-openconnect-<version>.tar.gz` is the normal source archive.
+- `globalprotect-openconnect-<version>.offline.tar.gz` includes vendored Cargo dependencies and is intended for offline or distro package builds.
+
+#### Maintainer Versioning
+
+Fork release tags should include the upstream base version and a fork revision:
+
+```text
+v<upstream-version>-fork.<revision>
+```
+
+For example:
+
+```text
+v2.5.4-fork.1
+v2.5.4-fork.2
+v2.5.5-fork.1
+```
+
+Before creating a release tag, update `[workspace.package].version` in `Cargo.toml` to the same version without the leading `v`:
+
+```toml
+[workspace.package]
+version = "2.5.4-fork.1"
+```
+
+This keeps generated archive names, binary `--version` output, and the Git tag aligned.
 
 ## Building from Source
 
