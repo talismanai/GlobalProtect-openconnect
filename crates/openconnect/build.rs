@@ -186,6 +186,9 @@ fn main() {
   pkg_config::probe_library("nettle").unwrap();
   pkg_config::probe_library("gmp").unwrap();
 
+  #[cfg(target_os = "linux")]
+  println!("cargo:rustc-link-lib=tspi");
+
   // Compile the vpn.c file
   println!("cargo:rerun-if-changed=src/ffi/vpn.c");
   println!("cargo:rerun-if-changed=src/ffi/vpn.h");
