@@ -283,6 +283,7 @@ jobs:
             runner: ubuntu-latest
             arch: x86_64
             version: deb
+            experimental: false
             artifacts: |
               .build/deb/*.deb
               .build/deb/*.ddeb
@@ -294,6 +295,7 @@ jobs:
             runner: ubuntu-latest
             arch: x86_64
             version: package
+            experimental: false
             artifacts: |
               .build/rpm/*.rpm
           - package: pkg
@@ -302,6 +304,7 @@ jobs:
             runner: ubuntu-latest
             arch: x86_64
             version: package
+            experimental: false
             artifacts: |
               .build/pkgbuild/*.pkg.tar.zst
           - package: apk
@@ -310,6 +313,7 @@ jobs:
             runner: ubuntu-latest
             arch: x86_64
             version: apk
+            experimental: true
             artifacts: |
               .build/apk/*.apk
           - package: deb
@@ -318,6 +322,7 @@ jobs:
             runner: ubuntu-24.04-arm
             arch: aarch64
             version: deb
+            experimental: false
             artifacts: |
               .build/deb/*.deb
               .build/deb/*.ddeb
@@ -329,6 +334,7 @@ jobs:
             runner: ubuntu-24.04-arm
             arch: aarch64
             version: package
+            experimental: false
             artifacts: |
               .build/rpm/*.rpm
           - package: pkg
@@ -337,6 +343,7 @@ jobs:
             runner: ubuntu-24.04-arm
             arch: aarch64
             version: package
+            experimental: false
             artifacts: |
               .build/pkgbuild/*.pkg.tar.zst
           - package: apk
@@ -345,8 +352,10 @@ jobs:
             runner: ubuntu-24.04-arm
             arch: aarch64
             version: apk
+            experimental: true
             artifacts: |
               .build/apk/*.apk
+    continue-on-error: ${{ matrix.experimental }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4

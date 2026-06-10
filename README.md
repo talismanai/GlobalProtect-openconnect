@@ -378,7 +378,7 @@ Release workflows also publish distro-native package artifacts when the package 
 - Debian / Ubuntu: `.deb`
 - RPM-based distributions: `.rpm`
 - Arch Linux / Manjaro: `.pkg.tar.zst`
-- Alpine Linux: `.apk`
+- Alpine Linux: `.apk` (experimental; use the installable binary package when no APK is published)
 
 Prefer the distro-native package when it matches your system. Use the installable binary package or portable CLI archive as a fallback when a native package is unavailable.
 
