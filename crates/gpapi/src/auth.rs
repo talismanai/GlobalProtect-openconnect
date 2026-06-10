@@ -122,6 +122,10 @@ impl SamlAuthData {
     self.prelogin_cookie.as_deref()
   }
 
+  pub fn portal_userauthcookie(&self) -> Option<&str> {
+    self.portal_userauthcookie.as_deref()
+  }
+
   pub fn token(&self) -> Option<&str> {
     self.token.as_deref()
   }

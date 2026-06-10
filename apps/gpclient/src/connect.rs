@@ -11,7 +11,7 @@ use common::constants::{GP_CLIENT_VERSION, GP_USER_AGENT};
 use gpapi::{
   auth::SamlAuthResult,
   clap::{ToVerboseArg, args::Os},
-  credential::{Credential, PasswordCredential},
+  credential::{AuthCookieCredential, Credential, PasswordCredential},
   error::PortalError,
   gateway::{GatewayLogin, SessionExtensionAuth, gateway_login},
   gp_params::{ClientOs, GpParams},
@@ -324,6 +324,27 @@ impl<'a> ConnectHandler<'a> {
     let prelogin = prelogin(portal, &gp_params).await?;
 
     let cred = self.obtain_credential(&prelogin, portal).await?;
+    if let (true, Some(gateway), Some(auth_cookie_cred)) = (
+      self.args.cookie_on_stdin,
+      self.args.gateway.as_deref(),
+      Self::auth_cookie_from_credential(&cred),
+    ) {
+      info!("Using portal-userauthcookie from stdin; skipping portal config retrieval");
+      let cred = (&auth_cookie_cred).into();
+      let login_session = self.login_gateway(gateway, &cred, &gp_params).await?;
+
+      return self
+        .connect_gateway(
+          portal,
+          gateway,
+          &login_session.cookie,
+          self.args.client_version.as_deref(),
+          false,
+          login_session.extension_auth,
+        )
+        .await;
+    }
+
     let mut portal_config = retrieve_config(portal, &cred, &gp_params).await?;
 
     let selected_gateway = match &self.args.gateway {
@@ -377,6 +398,27 @@ impl<'a> ConnectHandler<'a> {
         login_session.extension_auth,
       )
       .await
+  }
+
+  fn auth_cookie_from_credential(cred: &Credential) -> Option<AuthCookieCredential> {
+    let params = cred.to_params();
+    let portal_userauthcookie = params.get("portal-userauthcookie").copied().unwrap_or_default();
+
+    if portal_userauthcookie.is_empty() || portal_userauthcookie == "empty" {
+      return None;
+    }
+
+    let portal_prelogonuserauthcookie = params
+      .get("portal-prelogonuserauthcookie")
+      .copied()
+      .filter(|value| !value.is_empty())
+      .unwrap_or("empty");
+
+    Some(AuthCookieCredential::new(
+      cred.username(),
+      portal_userauthcookie,
+      portal_prelogonuserauthcookie,
+    ))
   }
 
   async fn connect_gateway_with_prelogin(
