@@ -338,7 +338,7 @@ Release assets are published at:
 
 <https://github.com/talismanai/GlobalProtect-openconnect/releases>
 
-Each `v*.*.*` release includes source archives, portable CLI archives, installable binary packages, and checksum files.
+Each `v*.*.*` release includes source archives, portable CLI archives, installable binary packages, distro packages, and checksum files.
 
 #### Installable Binary Package
 
@@ -370,6 +370,17 @@ Download `SHA256SUMS.txt` from the release and verify the files:
 ```bash
 sha256sum -c SHA256SUMS.txt
 ```
+
+#### Distro Packages
+
+Release workflows also publish distro-native package artifacts when the package build matrix succeeds:
+
+- Debian / Ubuntu: `.deb`
+- RPM-based distributions: `.rpm`
+- Arch Linux / Manjaro: `.pkg.tar.zst`
+- Alpine Linux: `.apk`
+
+Prefer the distro-native package when it matches your system. Use the installable binary package or portable CLI archive as a fallback when a native package is unavailable.
 
 #### Source Archives
 

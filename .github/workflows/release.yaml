@@ -38,6 +38,8 @@ jobs:
     outputs:
       tag: ${{ steps.release.outputs.tag }}
       version: ${{ steps.release.outputs.version }}
+      deb_version: ${{ steps.release.outputs.deb_version }}
+      package_version: ${{ steps.release.outputs.package_version }}
     steps:
       - name: Resolve release metadata
         id: release
@@ -47,6 +49,8 @@ jobs:
         run: |
           tag="${INPUT_TAG:-$REF_NAME}"
           version="${tag#v}"
+          deb_version="${version//-/+}"
+          package_version="${version//-/_}"
 
           if [[ ! "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([-.][0-9A-Za-z.]+)?$ ]]; then
             echo "Invalid release tag: $tag" >&2
@@ -55,6 +59,8 @@ jobs:
 
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
           echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "deb_version=$deb_version" >> "$GITHUB_OUTPUT"
+          echo "package_version=$package_version" >> "$GITHUB_OUTPUT"
 
   source:
     name: Source tarballs
@@ -257,6 +263,135 @@ jobs:
           if-no-files-found: error
           path: dist/*
 
+  distro-packages:
+    name: Distro package (${{ matrix.package }}, ${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    needs: prepare
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - package: deb
+            target: deb
+            builder: deb-builder-tauri2
+            runner: ubuntu-latest
+            arch: x86_64
+            version: deb
+            artifacts: |
+              .build/deb/*.deb
+              .build/deb/*.ddeb
+              .build/deb/*.buildinfo
+              .build/deb/*.changes
+          - package: rpm
+            target: rpm
+            builder: rpm-builder-tauri2
+            runner: ubuntu-latest
+            arch: x86_64
+            version: package
+            artifacts: |
+              .build/rpm/*.rpm
+          - package: pkg
+            target: pkgbuild
+            builder: pkg-builder-tauri2
+            runner: ubuntu-latest
+            arch: x86_64
+            version: package
+            artifacts: |
+              .build/pkgbuild/*.pkg.tar.zst
+          - package: apk
+            target: apk
+            builder: apk-builder-tauri2
+            runner: ubuntu-latest
+            arch: x86_64
+            version: package
+            artifacts: |
+              .build/apk/*.apk
+          - package: deb
+            target: deb
+            builder: deb-builder-tauri2
+            runner: ubuntu-24.04-arm
+            arch: aarch64
+            version: deb
+            artifacts: |
+              .build/deb/*.deb
+              .build/deb/*.ddeb
+              .build/deb/*.buildinfo
+              .build/deb/*.changes
+          - package: rpm
+            target: rpm
+            builder: rpm-builder-tauri2
+            runner: ubuntu-24.04-arm
+            arch: aarch64
+            version: package
+            artifacts: |
+              .build/rpm/*.rpm
+          - package: pkg
+            target: pkgbuild
+            builder: pkg-builder-tauri2
+            runner: ubuntu-24.04-arm
+            arch: aarch64
+            version: package
+            artifacts: |
+              .build/pkgbuild/*.pkg.tar.zst
+          - package: apk
+            target: apk
+            builder: apk-builder-tauri2
+            runner: ubuntu-24.04-arm
+            arch: aarch64
+            version: package
+            artifacts: |
+              .build/apk/*.apk
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.tag }}
+          submodules: recursive
+
+      - name: Build ${{ matrix.package }} package
+        env:
+          DEB_VERSION: ${{ needs.prepare.outputs.deb_version }}
+          PACKAGE_VERSION: ${{ needs.prepare.outputs.package_version }}
+        run: |
+          version="$PACKAGE_VERSION"
+          if [[ "${{ matrix.version }}" == "deb" ]]; then
+            version="$DEB_VERSION"
+          fi
+
+          docker run --pull=always --rm \
+            -e COREPACK_INTEGRITY_KEYS=0 \
+            -e LIBXML2_STATIC=1 \
+            -v "$PWD:/workspace" \
+            -w /workspace \
+            "yuezk/gpdev:${{ matrix.builder }}" \
+            sh -lc "git config --global --add safe.directory /workspace && make ${{ matrix.target }} VERSION='$version' REVISION=1 INCLUDE_GUI=0 BUILD_GUI_HELPER=0 LIBXML2_STATIC=1"
+
+      - name: Collect ${{ matrix.package }} artifacts
+        env:
+          PACKAGE: ${{ matrix.package }}
+          ARCH: ${{ matrix.arch }}
+          ARTIFACTS: ${{ matrix.artifacts }}
+        run: |
+          mkdir -p "dist/$PACKAGE-$ARCH"
+          shopt -s nullglob
+          while IFS= read -r pattern; do
+            [[ -z "$pattern" ]] && continue
+            files=( $pattern )
+            if [[ "${#files[@]}" -gt 0 ]]; then
+              cp "${files[@]}" "dist/$PACKAGE-$ARCH/"
+            fi
+          done <<< "$ARTIFACTS"
+          test "$(find "dist/$PACKAGE-$ARCH" -type f | wc -l)" -gt 0
+          cd "dist/$PACKAGE-$ARCH"
+          sha256sum * > "SHA256SUMS-${PACKAGE}-${ARCH}.txt"
+
+      - name: Upload ${{ matrix.package }} artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: distro-${{ matrix.package }}-${{ matrix.arch }}
+          if-no-files-found: error
+          path: dist/${{ matrix.package }}-${{ matrix.arch }}/*
+
   publish:
     name: Publish GitHub release
     runs-on: ubuntu-latest
@@ -265,6 +400,7 @@ jobs:
       - source
       - linux-binaries
       - binary-package
+      - distro-packages
     steps:
       - name: Download release artifacts
         uses: actions/download-artifact@v4
