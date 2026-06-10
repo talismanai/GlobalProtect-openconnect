@@ -358,13 +358,15 @@ jobs:
             version="$DEB_VERSION"
           fi
 
+          chmod -R a+rwX "$PWD"
           docker run --pull=always --rm \
             -e COREPACK_INTEGRITY_KEYS=0 \
             -e LIBXML2_STATIC=1 \
             -v "$PWD:/workspace" \
             -w /workspace \
             "yuezk/gpdev:${{ matrix.builder }}" \
-            sh -lc "git config --global --add safe.directory /workspace && make ${{ matrix.target }} VERSION='$version' REVISION=1 INCLUDE_GUI=0 BUILD_GUI_HELPER=0 LIBXML2_STATIC=1"
+            sh -lc "make ${{ matrix.target }} VERSION='$version' REVISION=1 INCLUDE_GUI=0 BUILD_GUI_HELPER=0 LIBXML2_STATIC=1"
+          sudo chown -R "$USER:$USER" .build
 
       - name: Collect ${{ matrix.package }} artifacts
         env:
