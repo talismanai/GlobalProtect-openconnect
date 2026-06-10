@@ -392,6 +392,8 @@ jobs:
                 run_as_root dnf install -y trousers-devel
               elif command -v zypper >/dev/null 2>&1; then
                 run_as_root zypper --non-interactive install trousers-devel
+              elif command -v apk >/dev/null 2>&1; then
+                run_as_root apk update
               fi
 
               make ${{ matrix.target }} VERSION='$version' REVISION=1 INCLUDE_GUI=0 BUILD_GUI_HELPER=0 LIBXML2_STATIC=1
