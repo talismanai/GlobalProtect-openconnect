@@ -15,7 +15,7 @@ pub fn init(level: Level) {
 }
 
 pub fn init_with_logger(level: Level, logger: Logger) {
-  if let Some(_) = LOG_HANDLE.get() {
+  if LOG_HANDLE.get().is_some() {
     warn!("Logger already initialized");
     return;
   }

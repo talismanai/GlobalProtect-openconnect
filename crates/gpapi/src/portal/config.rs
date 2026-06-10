@@ -156,7 +156,7 @@ pub async fn retrieve_config(portal: &str, cred: &Credential, gp_params: &GpPara
   let mut prefer_internal = false;
   if let Some(ihd_node) = root.descendant("internal-host-detection") {
     ihd_enabled = true;
-    prefer_internal = internal_host_detect(&ihd_node)
+    prefer_internal = internal_host_detect(ihd_node)
   }
 
   let mut gateways = parse_gateways(&root, prefer_internal).unwrap_or_else(|| {
@@ -208,23 +208,24 @@ fn internal_host_detect(element: &Element) -> bool {
   info!("Found internal-host-detection, performing DNS lookup");
 
   for (ip_address, host) in ip_info.iter() {
-    if let (Some(ip_address), Some(host)) = (ip_address.as_deref(), host.as_deref()) {
-      if !ip_address.is_empty() && !host.is_empty() {
-        match ip_address.parse::<std::net::IpAddr>() {
-          Ok(ip) => match lookup_addr(&ip) {
-            Ok(host_lookup) if host_lookup.to_lowercase() == host.to_lowercase() => {
-              return true;
-            }
-            Ok(host_lookup) => {
-              info!(
-                "rDNS lookup for {} returned {}, expected {}",
-                ip_address, host_lookup, host
-              );
-            }
-            Err(err) => warn!("rDNS lookup failed for {}: {}", ip_address, err),
-          },
-          Err(err) => warn!("Invalid IP address {}: {}", ip_address, err),
-        }
+    if let (Some(ip_address), Some(host)) = (ip_address.as_deref(), host.as_deref())
+      && !ip_address.is_empty()
+      && !host.is_empty()
+    {
+      match ip_address.parse::<std::net::IpAddr>() {
+        Ok(ip) => match lookup_addr(&ip) {
+          Ok(host_lookup) if host_lookup.to_lowercase() == host.to_lowercase() => {
+            return true;
+          }
+          Ok(host_lookup) => {
+            info!(
+              "rDNS lookup for {} returned {}, expected {}",
+              ip_address, host_lookup, host
+            );
+          }
+          Err(err) => warn!("rDNS lookup failed for {}: {}", ip_address, err),
+        },
+        Err(err) => warn!("Invalid IP address {}: {}", ip_address, err),
       }
     }
   }
