@@ -241,16 +241,14 @@ jobs:
         run: make binary INCLUDE_GUI=0 BUILD_GUI_HELPER=0
 
       - name: Rename package with release architecture
-        env:
-          ARCH: ${{ matrix.arch }}
         run: |
           mkdir -p dist
           for file in .build/binary/*.tar.xz; do
-            base="$(basename "$file" .tar.xz)"
-            cp "$file" "dist/${base}_${ARCH}.tar.xz"
+            base="$(basename "$file" .bin.tar.xz)"
+            cp "$file" "dist/${base}.tar.xz"
           done
           cd dist
-          sha256sum *.tar.xz > "SHA256SUMS-package-${ARCH}.txt"
+          sha256sum *.tar.xz > "SHA256SUMS-package-${{ matrix.arch }}.txt"
 
       - name: Upload package artifacts
         uses: actions/upload-artifact@v4
