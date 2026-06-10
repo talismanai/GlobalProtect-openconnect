@@ -25,7 +25,7 @@ A modern GlobalProtect VPN client for Linux, built on OpenConnect with full supp
   - [NixOS](#nixos)
   - [Official Docker Image](#official-docker-image)
   - [Other Distributions](#other-distributions)
-  - [TalismanAI Release Assets](#talismanai-release-assets)
+  - [Release Assets](#release-assets)
 - [Building from Source](#building-from-source)
 - [Frequently Asked Questions](#frequently-asked-questions)
 - [License](#license)
@@ -332,9 +332,9 @@ The image includes `gpclient` and `gpauth` only. It does not include embedded we
    sudo make install
    ```
 
-### TalismanAI Release Assets
+### Release Assets
 
-TalismanAI fork releases are published at:
+Release assets are published at:
 
 <https://github.com/talismanai/GlobalProtect-openconnect/releases>
 
