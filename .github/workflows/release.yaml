@@ -50,7 +50,7 @@ jobs:
           tag="${INPUT_TAG:-$REF_NAME}"
           version="${tag#v}"
           deb_version="${version//-/+}"
-          package_version="${version//-/_}"
+          package_version="${version//-/.}"
 
           if [[ ! "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([-.][0-9A-Za-z.]+)?$ ]]; then
             echo "Invalid release tag: $tag" >&2
@@ -365,7 +365,32 @@ jobs:
             -v "$PWD:/workspace" \
             -w /workspace \
             "yuezk/gpdev:${{ matrix.builder }}" \
-            sh -lc "make ${{ matrix.target }} VERSION='$version' REVISION=1 INCLUDE_GUI=0 BUILD_GUI_HELPER=0 LIBXML2_STATIC=1"
+            sh -lc "
+              run_as_root() {
+                if [ \"\$(id -u)\" = 0 ]; then
+                  \"\$@\"
+                elif command -v sudo >/dev/null 2>&1; then
+                  sudo \"\$@\"
+                else
+                  \"\$@\"
+                fi
+              }
+
+              if command -v apt-get >/dev/null 2>&1; then
+                run_as_root apt-get update
+                run_as_root apt-get install -y --no-install-recommends libtspi-dev
+              elif command -v dnf >/dev/null 2>&1; then
+                run_as_root dnf install -y trousers-devel
+              elif command -v zypper >/dev/null 2>&1; then
+                run_as_root zypper --non-interactive install trousers-devel
+              elif command -v pacman >/dev/null 2>&1; then
+                run_as_root pacman -Sy --noconfirm --needed trousers
+              elif command -v apk >/dev/null 2>&1; then
+                run_as_root apk add --no-cache trousers-dev
+              fi
+
+              make ${{ matrix.target }} VERSION='$version' REVISION=1 INCLUDE_GUI=0 BUILD_GUI_HELPER=0 LIBXML2_STATIC=1
+            "
           sudo chown -R "$USER:$USER" .build
 
       - name: Collect ${{ matrix.package }} artifacts
