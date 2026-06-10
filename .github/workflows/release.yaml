@@ -423,4 +423,5 @@ jobs:
           draft: ${{ inputs.draft || false }}
           prerelease: ${{ inputs.prerelease || contains(needs.prepare.outputs.tag, '-') }}
           fail_on_unmatched_files: true
+          overwrite_files: true
           files: release-artifacts/*
