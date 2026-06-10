@@ -597,7 +597,7 @@ impl<'a> ConnectHandler<'a> {
           .saml_request(prelogin.saml_request())
           .user_agent(&user_agent)
           .os(self.args.os.as_str())
-          .os_version(Some(&os_version))
+          .os_version(Some(os_version))
           .fix_openssl(self.shared_args.fix_openssl)
           .ignore_tls_errors(self.shared_args.ignore_tls_errors)
           .browser(browser)

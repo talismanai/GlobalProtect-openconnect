@@ -147,15 +147,13 @@ impl Cli {
   }
 
   fn build_gp_params(&self) -> GpParams {
-    let gp_params = GpParams::builder()
+    GpParams::builder()
       .user_agent(&self.user_agent)
       .client_os(ClientOs::from(&self.os))
       .os_version(self.os_version.clone())
       .ignore_tls_errors(self.ignore_tls_errors)
       .is_gateway(self.gateway)
-      .build();
-
-    gp_params
+      .build()
   }
 }
 
