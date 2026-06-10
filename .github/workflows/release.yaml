@@ -1,281 +1,292 @@
-name: GH Release Packages
+name: Release
 
 on:
+  push:
+    tags:
+      - v*.*.*
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Tag to release'
+        description: Tag to release, for example v2.5.4
         required: true
-      arch:
-        type: choice
-        description: 'Architecture to build'
-        required: true
-        default: all
-        options:
-          - all
-          - x86_64
-          - arm64
-      release-deb:
+      prerelease:
+        description: Mark the GitHub release as a prerelease
         type: boolean
-        description: 'Build DEB package'
         required: true
-        default: true
-      release-rpm:
+        default: false
+      draft:
+        description: Create the GitHub release as a draft
         type: boolean
-        description: 'Build RPM package'
         required: true
-        default: true
-      release-pkg:
-        type: boolean
-        description: 'Build PKG package'
-        required: true
-        default: true
-      release-apk:
-        type: boolean
-        description: 'Build APK package'
-        required: true
-        default: true
-      release-binary:
-        type: boolean
-        description: 'Build binary package'
-        required: true
-        default: true
-      release-docker:
-        type: boolean
-        description: 'Publish Docker image'
-        required: true
-        default: true
-      gh-release:
-        type: boolean
-        description: 'Update GitHub release'
-        required: true
-        default: true
+        default: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
 
 jobs:
-  check:
-    runs-on: ubuntu-latest
-    steps:
-    - name: Check tag exists
-      uses: mukunku/tag-exists-action@v1.6.0
-      id: check-tag
-      with:
-        tag: ${{ inputs.tag }}
-    - name: Exit if tag does not exist
-      run: |
-        if [[ "${{ steps.check-tag.outputs.exists }}" == "false" ]]; then
-          echo "Tag ${{ inputs.tag }} does not exist"
-          exit 1
-        fi
-
-  setup-matrix:
-    needs:
-    - check
+  prepare:
+    name: Prepare release
     runs-on: ubuntu-latest
     outputs:
-      matrix: ${{ steps.set-matrix.outputs.result }}
+      tag: ${{ steps.release.outputs.tag }}
+      version: ${{ steps.release.outputs.version }}
     steps:
-    - name: Set up matrix
-      id: set-matrix
-      uses: actions/github-script@v7
-      with:
-        result-encoding: string
-        script: |
-          const inputs = ${{ toJson(inputs) }}
-          const { arch } = inputs
-          const osMap = {
-            "all": ["ubuntu-latest", "ubuntu-24.04-arm"],
-            "x86_64": ["ubuntu-latest"],
-            "arm64": ["ubuntu-24.04-arm"]
-          }
+      - name: Resolve release metadata
+        id: release
+        env:
+          INPUT_TAG: ${{ inputs.tag }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          tag="${INPUT_TAG:-$REF_NAME}"
+          version="${tag#v}"
 
-          const package = Object.entries(inputs)
-            .filter(([key, value]) => key.startsWith('release-') && key !== 'release-docker' && value)
-            .map(([key, value]) => key.replace('release-', ''))
+          if [[ ! "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([-.][0-9A-Za-z.]+)?$ ]]; then
+            echo "Invalid release tag: $tag" >&2
+            exit 1
+          fi
 
-          return JSON.stringify({
-            os: osMap[arch],
-            package,
-          })
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
 
-  build:
-    needs:
-    - setup-matrix
-    strategy:
-      matrix: ${{ fromJson(needs.setup-matrix.outputs.matrix) }}
-    runs-on: ${{ matrix.os }}
+  source:
+    name: Source tarballs
+    runs-on: ubuntu-latest
+    needs: prepare
     steps:
-    - name: Prepare workspace
-      run: rm -rf build-${{ matrix.package }} && mkdir -p build-${{ matrix.package }}
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.tag }}
+          submodules: recursive
 
-    - name: Download ${{ inputs.tag }} source code
-      env:
-        GH_TOKEN: ${{ secrets.GH_PAT }}
-      run: |
-        gh -R yuezk/GlobalProtect-openconnect \
-          release download ${{ inputs.tag }} \
-          --pattern '*[^offline].tar.gz' \
-          --dir build-${{ matrix.package }}
+      - name: Install Rust toolchain
+        run: |
+          rustup toolchain install 1.89 --profile minimal
+          rustup default 1.89
 
-    - name: Docker Login
-      run: echo ${{ secrets.DOCKER_HUB_TOKEN }} | docker login -u ${{ secrets.DOCKER_HUB_USERNAME }} --password-stdin
-    - name: Build ${{ matrix.package }} package in Docker
-      # LIBXML2_STATIC is needed to avoid the dynamic linking issue on different distros
-      run: |
-        docker run --pull=always --rm \
-          -v $(pwd)/build-${{ matrix.package }}:/workspace \
-          -e COREPACK_INTEGRITY_KEYS=0 \
-          -e LIBXML2_STATIC=1 \
-          -e INCLUDE_GUI=1 \
-          yuezk/gpdev:${{ matrix.package }}-builder-tauri2
+      - name: Build source tarball
+        run: |
+          mkdir -p dist
+          make tarball
+          cp .build/tarball/*.tar.gz dist/
 
-    - name: Install ${{ matrix.package }} package in Docker
-      run: |
-        docker run --pull=always --rm \
-          -e COREPACK_INTEGRITY_KEYS=0 \
-          -v $(pwd)/build-${{ matrix.package }}:/workspace \
-          yuezk/gpdev:${{ matrix.package }}-builder-tauri2 \
-          bash install.sh
+      - name: Build offline source tarball
+        run: |
+          make tarball OFFLINE=1
+          for file in .build/tarball/*.tar.gz; do
+            base="$(basename "$file" .tar.gz)"
+            cp "$file" "dist/${base}.offline.tar.gz"
+          done
 
-    - name: Upload ${{ matrix.package }} package
-      uses: actions/upload-artifact@v7
-      with:
-        name: artifact-${{ matrix.os }}-${{ matrix.package }}
-        if-no-files-found: error
-        path: |
-          build-${{ matrix.package }}/artifacts/*
+      - name: Generate checksums
+        working-directory: dist
+        run: sha256sum * > SHA256SUMS-source.txt
 
-  build-docker-image:
-    needs:
-    - check
-    if: ${{ inputs.release-docker }}
+      - name: Upload source artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: source
+          if-no-files-found: error
+          path: dist/*
+
+  linux-binaries:
+    name: Linux binaries (${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    needs: prepare
     strategy:
       fail-fast: false
       matrix:
         include:
           - runner: ubuntu-latest
-            platform: linux/amd64
+            arch: x86_64
           - runner: ubuntu-24.04-arm
-            platform: linux/arm64
+            arch: aarch64
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.tag }}
+          submodules: recursive
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            autoconf \
+            automake \
+            autopoint \
+            build-essential \
+            clang \
+            gettext \
+            libgmp-dev \
+            libgnutls28-dev \
+            liblz4-dev \
+            libp11-kit-dev \
+            libssl-dev \
+            libtspi-dev \
+            libtool \
+            libxml2-dev \
+            nettle-dev \
+            patch \
+            pkg-config \
+            zlib1g-dev
+
+      - name: Install Rust toolchain
+        run: |
+          rustup toolchain install 1.89 --profile minimal
+          rustup default 1.89
+
+      - name: Cache Rust build
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/git/db/
+            ~/.cargo/registry/cache/
+            ~/.cargo/registry/index/
+            target/
+          key: release-${{ matrix.arch }}-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml', '.gitmodules') }}
+          restore-keys: |
+            release-${{ matrix.arch }}-
+
+      - name: Build release binaries
+        run: cargo build --release -p gpclient -p gpauth -p gpservice --no-default-features
+
+      - name: Package binaries
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
+          ARCH: ${{ matrix.arch }}
+        run: |
+          pkg="globalprotect-openconnect_${VERSION}_${ARCH}"
+          mkdir -p "dist/$pkg"
+          install -m 0755 target/release/gpclient "dist/$pkg/gpclient"
+          install -m 0755 target/release/gpauth "dist/$pkg/gpauth"
+          install -m 0755 target/release/gpservice "dist/$pkg/gpservice"
+          install -m 0644 LICENSE "dist/$pkg/LICENSE"
+          install -m 0644 README.md "dist/$pkg/README.md"
+          tar -C dist -cJf "dist/${pkg}.bin.tar.xz" "$pkg"
+          sha256sum "dist/${pkg}.bin.tar.xz" > "dist/${pkg}.bin.tar.xz.sha256"
+
+      - name: Verify CLIs
+        run: |
+          target/release/gpclient --help
+          target/release/gpauth --help
+          target/release/gpservice --help
+
+      - name: Upload binary artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-binaries-${{ matrix.arch }}
+          if-no-files-found: error
+          path: |
+            dist/*.bin.tar.xz
+            dist/*.sha256
+
+  binary-package:
+    name: Binary package (${{ matrix.arch }})
     runs-on: ${{ matrix.runner }}
+    needs: prepare
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-latest
+            arch: x86_64
+          - runner: ubuntu-24.04-arm
+            arch: aarch64
     steps:
-    - name: Prepare
-      run: |
-        platform=${{ matrix.platform }}
-        echo "PLATFORM_PAIR=${platform//\//-}" >> "$GITHUB_ENV"
-    - name: Prepare workspace
-      run: rm -rf docker-image && mkdir -p docker-image/source
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.tag }}
+          submodules: recursive
 
-    - name: Download ${{ inputs.tag }} source code
-      env:
-        GH_TOKEN: ${{ secrets.GH_PAT }}
-      run: |
-        gh -R yuezk/GlobalProtect-openconnect \
-          release download ${{ inputs.tag }} \
-          --pattern '*[^offline].tar.gz' \
-          --dir docker-image
-        tar -xzf docker-image/*.tar.gz -C docker-image/source --strip-components=1
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            autoconf \
+            automake \
+            autopoint \
+            build-essential \
+            clang \
+            gettext \
+            libgmp-dev \
+            libgnutls28-dev \
+            liblz4-dev \
+            libp11-kit-dev \
+            libssl-dev \
+            libtspi-dev \
+            libtool \
+            libxml2-dev \
+            nettle-dev \
+            patch \
+            pkg-config \
+            zlib1g-dev
 
-    - name: Set up Docker Buildx
-      uses: docker/setup-buildx-action@v4
-    - name: Login to Docker Hub
-      uses: docker/login-action@v4
-      with:
-        username: ${{ secrets.DOCKER_HUB_USERNAME }}
-        password: ${{ secrets.DOCKER_HUB_TOKEN }}
-    - name: Build and push by digest
-      id: build
-      uses: docker/build-push-action@v7
-      with:
-        context: docker-image/source
-        file: docker-image/source/packaging/docker/alpine/Dockerfile
-        platforms: ${{ matrix.platform }}
-        outputs: type=image,name=yuezk/globalprotect-openconnect,push-by-digest=true,name-canonical=true,push=true
-    - name: Verify CLI tools
-      env:
-        IMAGE: yuezk/globalprotect-openconnect
-        DIGEST: ${{ steps.build.outputs.digest }}
-      run: |
-        docker run --rm "$IMAGE@$DIGEST" --help
-        docker run --rm --entrypoint gpauth "$IMAGE@$DIGEST" --help
-        docker run --rm --entrypoint sh "$IMAGE@$DIGEST" -lc 'test "$(id -u gp)" = "1000" && test "$SUDO_UID" = "1000"'
-    - name: Export digest
-      run: |
-        mkdir -p /tmp/digests
-        digest="${{ steps.build.outputs.digest }}"
-        touch "/tmp/digests/${digest#sha256:}"
-    - name: Upload digest
-      uses: actions/upload-artifact@v7
-      with:
-        name: digests-${{ env.PLATFORM_PAIR }}
-        path: /tmp/digests/*
-        if-no-files-found: error
-        retention-days: 1
+      - name: Install Rust toolchain
+        run: |
+          rustup toolchain install 1.89 --profile minimal
+          rustup default 1.89
 
-  publish-docker-image:
-    needs:
-    - build-docker-image
-    if: ${{ inputs.release-docker }}
+      - name: Build installable binary package
+        run: make binary INCLUDE_GUI=0 BUILD_GUI_HELPER=0
+
+      - name: Rename package with release architecture
+        env:
+          ARCH: ${{ matrix.arch }}
+        run: |
+          mkdir -p dist
+          for file in .build/binary/*.tar.xz; do
+            base="$(basename "$file" .tar.xz)"
+            cp "$file" "dist/${base}_${ARCH}.tar.xz"
+          done
+          cd dist
+          sha256sum *.tar.xz > "SHA256SUMS-package-${ARCH}.txt"
+
+      - name: Upload package artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: binary-package-${{ matrix.arch }}
+          if-no-files-found: error
+          path: dist/*
+
+  publish:
+    name: Publish GitHub release
     runs-on: ubuntu-latest
-    steps:
-    - name: Download digests
-      uses: actions/download-artifact@v8
-      with:
-        path: /tmp/digests
-        pattern: digests-*
-        merge-multiple: true
-    - name: Set up Docker Buildx
-      uses: docker/setup-buildx-action@v4
-    - name: Login to Docker Hub
-      uses: docker/login-action@v4
-      with:
-        username: ${{ secrets.DOCKER_HUB_USERNAME }}
-        password: ${{ secrets.DOCKER_HUB_TOKEN }}
-    - name: Publish Docker manifest
-      working-directory: /tmp/digests
-      env:
-        IMAGE: yuezk/globalprotect-openconnect
-        TAG: ${{ inputs.tag }}
-      run: |
-        VERSION="${TAG#v}"
-        tags=(-t "$IMAGE:$TAG")
-
-        if [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-          tags+=(-t "$IMAGE:$VERSION" -t "$IMAGE:latest")
-        fi
-
-        docker buildx imagetools create "${tags[@]}" \
-          $(printf "$IMAGE@sha256:%s " *)
-
-        docker buildx imagetools inspect "$IMAGE:$TAG"
-
-  gh-release:
     needs:
-    - build
-    runs-on: ubuntu-latest
-    if: ${{ inputs.gh-release }}
+      - prepare
+      - source
+      - linux-binaries
+      - binary-package
     steps:
-    - name: Prepare workspace
-      run: rm -rf gh-release && mkdir gh-release
-    - name: Download artifact
-      uses: actions/download-artifact@v8
-      with:
-        path: gh-release
-    - name: Rename APK artifacts
-      run: |
-        shopt -s nullglob
+      - name: Download release artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-artifacts
+          merge-multiple: true
 
-        for file in gh-release/artifact-ubuntu-latest-apk/*.apk; do
-          mv "$file" "${file%.apk}-x86_64.apk"
-        done
-        for file in gh-release/artifact-ubuntu-24.04-arm-apk/*.apk; do
-          mv "$file" "${file%.apk}-aarch64.apk"
-        done
-    - name: Update release
-      uses: softprops/action-gh-release@v1
-      with:
-        token: ${{ secrets.GH_PAT }}
-        prerelease: ${{ contains(github.ref, 'snapshot') }}
-        fail_on_unmatched_files: true
-        tag_name: ${{ inputs.tag }}
-        files: |
-          gh-release/artifact-*/*
+      - name: Generate combined checksums
+        working-directory: release-artifacts
+        run: |
+          find . -maxdepth 1 -type f ! -name 'SHA256SUMS*' -print0 \
+            | sort -z \
+            | xargs -0 sha256sum > SHA256SUMS.txt
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.prepare.outputs.tag }}
+          name: ${{ needs.prepare.outputs.tag }}
+          draft: ${{ inputs.draft || false }}
+          prerelease: ${{ inputs.prerelease || contains(needs.prepare.outputs.tag, '-') }}
+          fail_on_unmatched_files: true
+          files: release-artifacts/*
