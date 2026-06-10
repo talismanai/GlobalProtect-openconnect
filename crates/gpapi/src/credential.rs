@@ -41,14 +41,21 @@ impl From<&CachedCredential> for PasswordCredential {
 pub struct PreloginCredential {
   username: String,
   prelogin_cookie: Option<String>,
+  portal_userauthcookie: Option<String>,
   token: Option<String>,
 }
 
 impl PreloginCredential {
-  pub fn new(username: &str, prelogin_cookie: Option<&str>, token: Option<&str>) -> Self {
+  pub fn new(
+    username: &str,
+    prelogin_cookie: Option<&str>,
+    portal_userauthcookie: Option<&str>,
+    token: Option<&str>,
+  ) -> Self {
     Self {
       username: username.to_string(),
       prelogin_cookie: prelogin_cookie.map(|s| s.to_string()),
+      portal_userauthcookie: portal_userauthcookie.map(|s| s.to_string()),
       token: token.map(|s| s.to_string()),
     }
   }
@@ -61,6 +68,10 @@ impl PreloginCredential {
     self.prelogin_cookie.as_deref()
   }
 
+  pub fn portal_userauthcookie(&self) -> Option<&str> {
+    self.portal_userauthcookie.as_deref()
+  }
+
   pub fn token(&self) -> Option<&str> {
     self.token.as_deref()
   }
@@ -70,9 +81,10 @@ impl From<SamlAuthData> for PreloginCredential {
   fn from(value: SamlAuthData) -> Self {
     let username = value.username().to_string();
     let prelogin_cookie = value.prelogin_cookie();
+    let portal_userauthcookie = value.portal_userauthcookie();
     let token = value.token();
 
-    Self::new(&username, prelogin_cookie, token)
+    Self::new(&username, prelogin_cookie, portal_userauthcookie, token)
   }
 }
 
@@ -186,7 +198,13 @@ impl Credential {
 
     let (passwd, prelogin_cookie, portal_userauthcookie, portal_prelogonuserauthcookie, token) = match self {
       Credential::Password(cred) => (Some(cred.password()), None, None, None, None),
-      Credential::Prelogin(cred) => (None, cred.prelogin_cookie(), None, None, cred.token()),
+      Credential::Prelogin(cred) => (
+        None,
+        cred.prelogin_cookie(),
+        cred.portal_userauthcookie(),
+        None,
+        cred.token(),
+      ),
       Credential::AuthCookie(cred) => (
         None,
         None,
@@ -253,5 +271,27 @@ impl From<&AuthCookieCredential> for Credential {
 impl From<&CachedCredential> for Credential {
   fn from(value: &CachedCredential) -> Self {
     Self::Cached(value.clone())
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn prelogin_credential_preserves_portal_userauthcookie() {
+    let auth_data = SamlAuthData::new(
+      Some("user@example.com".to_string()),
+      Some("prelogin-cookie".to_string()),
+      Some("portal-userauthcookie".to_string()),
+    )
+    .unwrap();
+
+    let credential = Credential::from(auth_data);
+    let params = credential.to_params();
+
+    assert_eq!(params.get("user"), Some(&"user@example.com"));
+    assert_eq!(params.get("prelogin-cookie"), Some(&"prelogin-cookie"));
+    assert_eq!(params.get("portal-userauthcookie"), Some(&"portal-userauthcookie"));
   }
 }
