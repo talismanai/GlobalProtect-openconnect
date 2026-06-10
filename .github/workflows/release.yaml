@@ -40,6 +40,7 @@ jobs:
       version: ${{ steps.release.outputs.version }}
       deb_version: ${{ steps.release.outputs.deb_version }}
       package_version: ${{ steps.release.outputs.package_version }}
+      apk_version: ${{ steps.release.outputs.apk_version }}
     steps:
       - name: Resolve release metadata
         id: release
@@ -51,6 +52,10 @@ jobs:
           version="${tag#v}"
           deb_version="${version//-/+}"
           package_version="${version//-/.}"
+          apk_version="$package_version"
+          if [[ "$version" =~ ^([0-9]+\.[0-9]+\.[0-9]+)-fork\.([0-9]+)$ ]]; then
+            apk_version="${BASH_REMATCH[1]}_git${BASH_REMATCH[2]}"
+          fi
 
           if [[ ! "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([-.][0-9A-Za-z.]+)?$ ]]; then
             echo "Invalid release tag: $tag" >&2
@@ -61,6 +66,7 @@ jobs:
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "deb_version=$deb_version" >> "$GITHUB_OUTPUT"
           echo "package_version=$package_version" >> "$GITHUB_OUTPUT"
+          echo "apk_version=$apk_version" >> "$GITHUB_OUTPUT"
 
   source:
     name: Source tarballs
@@ -303,7 +309,7 @@ jobs:
             builder: apk-builder-tauri2
             runner: ubuntu-latest
             arch: x86_64
-            version: package
+            version: apk
             artifacts: |
               .build/apk/*.apk
           - package: deb
@@ -338,7 +344,7 @@ jobs:
             builder: apk-builder-tauri2
             runner: ubuntu-24.04-arm
             arch: aarch64
-            version: package
+            version: apk
             artifacts: |
               .build/apk/*.apk
     steps:
@@ -352,10 +358,13 @@ jobs:
         env:
           DEB_VERSION: ${{ needs.prepare.outputs.deb_version }}
           PACKAGE_VERSION: ${{ needs.prepare.outputs.package_version }}
+          APK_VERSION: ${{ needs.prepare.outputs.apk_version }}
         run: |
           version="$PACKAGE_VERSION"
           if [[ "${{ matrix.version }}" == "deb" ]]; then
             version="$DEB_VERSION"
+          elif [[ "${{ matrix.version }}" == "apk" ]]; then
+            version="$APK_VERSION"
           fi
 
           chmod -R a+rwX "$PWD"
@@ -383,10 +392,6 @@ jobs:
                 run_as_root dnf install -y trousers-devel
               elif command -v zypper >/dev/null 2>&1; then
                 run_as_root zypper --non-interactive install trousers-devel
-              elif command -v pacman >/dev/null 2>&1; then
-                run_as_root pacman -Sy --noconfirm --needed trousers
-              elif command -v apk >/dev/null 2>&1; then
-                run_as_root apk add --no-cache trousers-dev
               fi
 
               make ${{ matrix.target }} VERSION='$version' REVISION=1 INCLUDE_GUI=0 BUILD_GUI_HELPER=0 LIBXML2_STATIC=1

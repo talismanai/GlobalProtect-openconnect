@@ -18,7 +18,6 @@ depends="
 	openssl
 	p11-kit
 	polkit
-	trousers
 	webkit2gtk-4.1
 	xdg-utils
 	zlib
@@ -44,7 +43,6 @@ makedepends="
 	p11-kit-dev
 	patch
 	pkgconf
-	trousers-dev
 	zlib-dev
 	"
 source="$pkgname-$pkgver.tar.gz"

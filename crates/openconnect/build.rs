@@ -164,6 +164,18 @@ fn build_openconnect(deps_dir: &Path, out_dir: &Path) -> PathBuf {
   dst
 }
 
+#[cfg(target_os = "linux")]
+fn link_openconnect_optional_deps(openconnect_dst: &Path) {
+  let libtool_archive = openconnect_dst.join("lib/libopenconnect.la");
+  let Ok(metadata) = std::fs::read_to_string(&libtool_archive) else {
+    return;
+  };
+
+  if metadata.contains("-ltspi") {
+    println!("cargo:rustc-link-lib=tspi");
+  }
+}
+
 fn main() {
   let manifest_dir = env::var("CARGO_MANIFEST_DIR").unwrap();
   let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
@@ -191,7 +203,7 @@ fn main() {
   pkg_config::probe_library("gmp").unwrap();
 
   #[cfg(target_os = "linux")]
-  println!("cargo:rustc-link-lib=tspi");
+  link_openconnect_optional_deps(&oc_dst);
 
   // Compile the vpn.c file
   println!("cargo:rerun-if-changed=src/ffi/vpn.c");
